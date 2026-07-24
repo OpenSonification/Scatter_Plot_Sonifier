@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Visible stereo slider build -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -201,6 +202,71 @@
       opacity: 0.48;
       cursor: default;
     }
+
+
+    .stereo-sweep-card {
+      margin: -1px 0 14px;
+      padding: 12px 14px 11px;
+      border: 1px solid var(--accent);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--accent-soft) 72%, var(--panel-solid));
+    }
+
+    @supports not (background: color-mix(in srgb, white 50%, black)) {
+      .stereo-sweep-card { background: var(--accent-soft); }
+    }
+
+    .stereo-sweep-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 4px;
+    }
+
+    .stereo-sweep-head label {
+      color: var(--text);
+      font-size: 0.92rem;
+      font-weight: 800;
+    }
+
+    .stereo-sweep-head output {
+      color: var(--accent-strong);
+      font-size: 0.86rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .stereo-sweep-slider {
+      display: grid;
+      grid-template-columns: auto minmax(110px, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .stereo-sweep-slider input[type="range"] {
+      width: 100%;
+      height: 32px;
+      margin: 0;
+      accent-color: var(--accent-strong);
+    }
+
+    .stereo-sweep-end {
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .stereo-sweep-note {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      line-height: 1.35;
+    }
+
+    .stereo-sweep-card input:disabled { opacity: 0.52; }
 
     .status-row {
       display: flex;
@@ -499,7 +565,7 @@
         <h1>Scatter Plot Sonifier</h1>
         <p class="subtitle">Points are generated around an adjustable line or quadratic curve. Play every point as a tone cloud, or follow a smoothed curve continuously from left to right in a desktop browser.</p>
       </div>
-      <div class="badge">Desktop edition · one standalone file</div>
+      <div class="badge">Desktop edition · visible stereo sweep</div>
     </header>
 
     <div class="layout">
@@ -512,13 +578,27 @@
           <button id="regenerateButton" type="button">↻ New plot</button>
         </div>
 
+
+        <div class="stereo-sweep-card" role="group" aria-label="Stereo sweep control">
+          <div class="stereo-sweep-head">
+            <label for="stereoPan">Stereo sweep: left → right</label>
+            <output id="stereoPanOutput" for="stereoPan">0% · centred</output>
+          </div>
+          <div class="stereo-sweep-slider">
+            <span class="stereo-sweep-end" aria-hidden="true">Centred</span>
+            <input id="stereoPan" type="range" min="0" max="100" step="1" value="0" aria-valuetext="0% stereo pan; centred throughout">
+            <span class="stereo-sweep-end" aria-hidden="true">Hard L → R</span>
+          </div>
+          <div class="stereo-sweep-note">0% keeps every sound equally balanced. 100% starts hard left, crosses the centre halfway through, and ends hard right.</div>
+        </div>
+
         <div class="status-row" aria-live="polite">
           <span id="status">Ready — click Points or Smooth to enable audio.</span>
           <span id="timeReadout">0.00 / 4.00 s</span>
         </div>
 
         <div class="canvas-shell" id="canvasShell">
-          <canvas id="plotCanvas" tabindex="0" role="img" aria-label="Scatter plot generated around a user-controlled line or quadratic curve with adjustable constant or heteroskedastic Gaussian noise, plus a visible boundary-corrected smoothed curve. Horizontal position is playback time and vertical position is tone frequency."></canvas>
+          <canvas id="plotCanvas" tabindex="0" role="img" aria-label="Scatter plot generated around a user-controlled line or quadratic curve with adjustable constant or heteroskedastic Gaussian noise, plus a visible boundary-corrected smoothed curve. Horizontal position is playback time and optional stereo position; vertical position is tone frequency."></canvas>
         </div>
 
         <div class="plot-help">
@@ -658,6 +738,7 @@
             <input id="volume" type="range" min="0" max="100" step="1" value="45">
           </div>
 
+
           <div class="control">
             <div class="control-head">
               <label for="waveform">Waveform</label>
@@ -732,6 +813,7 @@
       var pointCountInput = document.getElementById('pointCount');
       var smoothBandwidthInput = document.getElementById('smoothBandwidth');
       var volumeInput = document.getElementById('volume');
+      var stereoPanInput = document.getElementById('stereoPan');
       var waveformInput = document.getElementById('waveform');
       var pitchScaleInput = document.getElementById('pitchScale');
 
@@ -748,6 +830,7 @@
       var pointCountOutput = document.getElementById('pointCountOutput');
       var smoothBandwidthOutput = document.getElementById('smoothBandwidthOutput');
       var volumeOutput = document.getElementById('volumeOutput');
+      var stereoPanOutput = document.getElementById('stereoPanOutput');
       var varianceReport = document.getElementById('varianceReport');
       var normalizationReport = document.getElementById('normalizationReport');
       var pointPlaybackReport = document.getElementById('pointPlaybackReport');
@@ -823,6 +906,29 @@
 
       function clamp(value, minimum, maximum) {
         return Math.max(minimum, Math.min(maximum, value));
+      }
+
+      function getStereoPanDepth() {
+        return clamp(numberValue(stereoPanInput) / 100, 0, 1);
+      }
+
+      function panForX(x) {
+        return getStereoPanDepth() * (2 * clamp(x, 0, 1) - 1);
+      }
+
+      function channelBalanceForPan(pan) {
+        var boundedPan = clamp(pan, -1, 1);
+        return {
+          left: boundedPan > 0 ? 1 - boundedPan : 1,
+          right: boundedPan < 0 ? 1 + boundedPan : 1
+        };
+      }
+
+      function panPositionText(x) {
+        var pan = panForX(x);
+        var percent = Math.round(Math.abs(pan) * 100);
+        if (percent < 1) return 'centred';
+        return percent + '% ' + (pan < 0 ? 'left' : 'right');
       }
 
       function pointCountFromSlider(value) {
@@ -1069,6 +1175,9 @@
         pointCountInput.setAttribute('aria-valuetext', formatInteger(count) + ' points');
         smoothBandwidthOutput.textContent = Math.round(numberValue(smoothBandwidthInput)) + '% of time';
         volumeOutput.textContent = Math.round(numberValue(volumeInput)) + '%';
+        var panPercent = Math.round(numberValue(stereoPanInput));
+        stereoPanOutput.textContent = panPercent === 0 ? '0% · centred' : panPercent + '% · L → R';
+        stereoPanInput.setAttribute('aria-valuetext', panPercent === 0 ? '0% stereo pan; centred throughout' : panPercent + '% stereo pan depth; starts toward the left and ends toward the right');
         updateVarianceReport();
         updateNormalizationReport();
         updatePointPlaybackReport();
@@ -1710,6 +1819,7 @@
         stopButton.disabled = !active;
         pauseButton.textContent = playback.mode === 'paused' ? 'Resume' : 'Pause';
         settingsFieldset.disabled = active;
+        stereoPanInput.disabled = active;
       }
 
       function createAudioGraph() {
@@ -1758,9 +1868,57 @@
         }
       }
 
-      function scheduleTone(frequency, startTime, lengthSeconds, waveform, peakGain) {
+      function createStereoBalanceStage(initialPan) {
+        var input = audioContext.createGain();
+        var leftGain = audioContext.createGain();
+        var rightGain = audioContext.createGain();
+        var merger = audioContext.createChannelMerger(2);
+        var initialBalance = channelBalanceForPan(initialPan);
+
+        leftGain.gain.value = initialBalance.left;
+        rightGain.gain.value = initialBalance.right;
+        input.connect(leftGain);
+        input.connect(rightGain);
+        leftGain.connect(merger, 0, 0);
+        rightGain.connect(merger, 0, 1);
+
+        return {
+          input: input,
+          output: merger,
+          setSweep: function (startPan, endPan, startTime, duration) {
+            var curveLength = 129;
+            var leftCurve = new Float32Array(curveLength);
+            var rightCurve = new Float32Array(curveLength);
+            var safeDuration = Math.max(0.001, duration);
+            var cancelTime = Math.max(audioContext.currentTime, startTime - 0.02);
+
+            for (var curveIndex = 0; curveIndex < curveLength; curveIndex += 1) {
+              var fraction = curveIndex / (curveLength - 1);
+              var balance = channelBalanceForPan(startPan + (endPan - startPan) * fraction);
+              leftCurve[curveIndex] = balance.left;
+              rightCurve[curveIndex] = balance.right;
+            }
+
+            leftGain.gain.cancelScheduledValues(cancelTime);
+            rightGain.gain.cancelScheduledValues(cancelTime);
+            leftGain.gain.setValueAtTime(leftCurve[0], cancelTime);
+            rightGain.gain.setValueAtTime(rightCurve[0], cancelTime);
+            leftGain.gain.setValueCurveAtTime(leftCurve, startTime, safeDuration);
+            rightGain.gain.setValueCurveAtTime(rightCurve, startTime, safeDuration);
+          },
+          disconnect: function () {
+            try { input.disconnect(); } catch (ignoreInputDisconnect) {}
+            try { leftGain.disconnect(); } catch (ignoreLeftDisconnect) {}
+            try { rightGain.disconnect(); } catch (ignoreRightDisconnect) {}
+            try { merger.disconnect(); } catch (ignoreMergerDisconnect) {}
+          }
+        };
+      }
+
+      function scheduleTone(frequency, startTime, lengthSeconds, waveform, peakGain, panPosition) {
         var oscillator = audioContext.createOscillator();
         var gain = audioContext.createGain();
+        var panStage = createStereoBalanceStage(typeof panPosition === 'number' ? panPosition : 0);
         var safeStart = Math.max(startTime, audioContext.currentTime + 0.002);
         var safeLength = Math.max(0.035, lengthSeconds);
         var attack = Math.min(0.012, safeLength * 0.18);
@@ -1777,15 +1935,17 @@
         gain.gain.exponentialRampToValueAtTime(0.0001, endTime);
 
         oscillator.connect(gain);
-        gain.connect(masterGain);
+        gain.connect(panStage.input);
+        panStage.output.connect(masterGain);
         oscillator.start(safeStart);
         oscillator.stop(endTime + 0.035);
 
-        var voice = { oscillator: oscillator, gain: gain };
+        var voice = { oscillator: oscillator, gain: gain, panStage: panStage };
         scheduledVoices.push(voice);
         oscillator.onended = function () {
           try { oscillator.disconnect(); } catch (ignoreOne) {}
           try { gain.disconnect(); } catch (ignoreTwo) {}
+          try { panStage.disconnect(); } catch (ignoreThree) {}
           var index = scheduledVoices.indexOf(voice);
           if (index >= 0) scheduledVoices.splice(index, 1);
         };
@@ -1820,6 +1980,9 @@
           try { voice.oscillator.stop(now + 0.01); } catch (ignoreStop) {}
           try { voice.oscillator.disconnect(); } catch (ignoreOscillatorDisconnect) {}
           try { voice.gain.disconnect(); } catch (ignoreGainDisconnect) {}
+          if (voice.panStage) {
+            try { voice.panStage.disconnect(); } catch (ignorePanDisconnect) {}
+          }
         }
       }
 
@@ -1851,13 +2014,16 @@
           var effectiveTone = effectivePointToneLength(count, sampleRate);
           var toneSamples = Math.max(32, Math.round(effectiveTone * sampleRate));
           var totalSamples = Math.ceil((duration + effectiveTone + 0.08) * sampleRate);
-          var buffer = audioContext.createBuffer(1, totalSamples, sampleRate);
-          var data = buffer.getChannelData(0);
+          var buffer = audioContext.createBuffer(2, totalSamples, sampleRate);
+          var leftData = buffer.getChannelData(0);
+          var rightData = buffer.getChannelData(1);
           var waveform = waveformInput.value;
           var table = getWaveTable(waveform);
           var tableLength = table.length;
           var xValues = new Float32Array(count);
           var yValues = new Float32Array(count);
+          var leftPanGains = new Float32Array(count);
+          var rightPanGains = new Float32Array(count);
           var envelope = new Float32Array(toneSamples);
           var attackSamples = Math.max(1, Math.min(Math.round(sampleRate * 0.008), Math.round(toneSamples * 0.22)));
           var releaseStart = Math.max(attackSamples, Math.round(toneSamples * 0.34));
@@ -1865,6 +2031,9 @@
           for (var snapshotIndex = 0; snapshotIndex < count; snapshotIndex += 1) {
             xValues[snapshotIndex] = points[snapshotIndex].x;
             yValues[snapshotIndex] = points[snapshotIndex].y;
+            var pointBalance = channelBalanceForPan(panForX(points[snapshotIndex].x));
+            leftPanGains[snapshotIndex] = pointBalance.left;
+            rightPanGains[snapshotIndex] = pointBalance.right;
           }
 
           for (var envelopeIndex = 0; envelopeIndex < toneSamples; envelopeIndex += 1) {
@@ -1886,10 +2055,14 @@
                 var frequency = clamp(yToFrequency(yValues[renderIndex]), 20, Math.min(20000, sampleRate * 0.45));
                 var phaseStep = frequency * tableLength / sampleRate;
                 var phase = ((renderIndex * 0.7548776662466927) % 1) * tableLength;
-                var availableSamples = Math.min(toneSamples, data.length - startSample);
+                var availableSamples = Math.min(toneSamples, leftData.length - startSample);
+                var pointLeftGain = leftPanGains[renderIndex];
+                var pointRightGain = rightPanGains[renderIndex];
 
                 for (var sampleIndex = 0; sampleIndex < availableSamples; sampleIndex += 1) {
-                  data[startSample + sampleIndex] += table[phase | 0] * envelope[sampleIndex];
+                  var sample = table[phase | 0] * envelope[sampleIndex];
+                  leftData[startSample + sampleIndex] += sample * pointLeftGain;
+                  rightData[startSample + sampleIndex] += sample * pointRightGain;
                   phase += phaseStep;
                   if (phase >= tableLength) phase -= tableLength;
                 }
@@ -1911,13 +2084,16 @@
 
               pointRenderTimer = 0;
               var maximum = 0;
-              for (var scanIndex = 0; scanIndex < data.length; scanIndex += 1) {
-                var absolute = Math.abs(data[scanIndex]);
-                if (absolute > maximum) maximum = absolute;
+              for (var scanIndex = 0; scanIndex < leftData.length; scanIndex += 1) {
+                var leftAbsolute = Math.abs(leftData[scanIndex]);
+                var rightAbsolute = Math.abs(rightData[scanIndex]);
+                if (leftAbsolute > maximum) maximum = leftAbsolute;
+                if (rightAbsolute > maximum) maximum = rightAbsolute;
               }
               var normalizationGain = maximum > 0.00001 ? 0.88 / maximum : 1;
-              for (var gainIndex = 0; gainIndex < data.length; gainIndex += 1) {
-                data[gainIndex] *= normalizationGain;
+              for (var gainIndex = 0; gainIndex < leftData.length; gainIndex += 1) {
+                leftData[gainIndex] *= normalizationGain;
+                rightData[gainIndex] *= normalizationGain;
               }
               onComplete(buffer, effectiveTone);
             } catch (error) {
@@ -1951,7 +2127,9 @@
         };
         setTransportState();
         var shortened = effectiveTone + 0.0005 < numberValue(toneLengthInput) / 1000;
-        setStatus('Playing all ' + formatInteger(points.length) + ' points left to right' + (shortened ? ' with ' + Math.round(effectiveTone * 1000) + ' ms performance-fitted tones…' : '…'));
+        var panPercent = Math.round(numberValue(stereoPanInput));
+        var panMessage = panPercent > 0 ? ' with a ' + panPercent + '% stereo sweep' : '';
+        setStatus('Playing all ' + formatInteger(points.length) + ' points left to right' + panMessage + (shortened ? ' using ' + Math.round(effectiveTone * 1000) + ' ms performance-fitted tones…' : '…'));
         updatePointPlaybackReport();
         startAnimation();
       }
@@ -1959,6 +2137,7 @@
       function scheduleSmoothVoice(actionToken) {
         var oscillator = audioContext.createOscillator();
         var gain = audioContext.createGain();
+        var panStage = createStereoBalanceStage(panForX(0));
         var frequencies = new Float32Array(smoothYValues.length);
         for (var i = 0; i < smoothYValues.length; i += 1) frequencies[i] = yToFrequency(smoothYValues[i]);
 
@@ -1975,22 +2154,26 @@
         gain.gain.exponentialRampToValueAtTime(0.0001, playback.startTime + playback.duration);
 
         oscillator.connect(gain);
-        gain.connect(masterGain);
+        gain.connect(panStage.input);
+        panStage.output.connect(masterGain);
+        panStage.setSweep(panForX(0), panForX(1), playback.startTime, playback.duration);
         oscillator.start(playback.startTime);
         oscillator.stop(playback.endTime);
 
-        var voice = { oscillator: oscillator, gain: gain };
+        var voice = { oscillator: oscillator, gain: gain, panStage: panStage };
         scheduledVoices.push(voice);
         oscillator.onended = function () {
           try { oscillator.disconnect(); } catch (ignoreOne) {}
           try { gain.disconnect(); } catch (ignoreTwo) {}
+          try { panStage.disconnect(); } catch (ignoreThree) {}
           var index = scheduledVoices.indexOf(voice);
           if (index >= 0) scheduledVoices.splice(index, 1);
           if (actionToken === playback.token && (playback.mode === 'playing' || playback.mode === 'paused')) finishPlayback();
         };
 
         setTransportState();
-        setStatus('Playing the smoothed curve continuously left to right…');
+        var panPercent = Math.round(numberValue(stereoPanInput));
+        setStatus('Playing the smoothed curve continuously left to right' + (panPercent > 0 ? ' with a ' + panPercent + '% stereo sweep…' : '…'));
         startAnimation();
       }
 
@@ -2156,8 +2339,8 @@
         draw();
 
         ensureAudioReady().then(function () {
-          scheduleTone(frequency, audioContext.currentTime + 0.018, previewLength, waveformInput.value, 0.14);
-          setStatus('Preview: ' + formatFrequency(frequency));
+          scheduleTone(frequency, audioContext.currentTime + 0.018, previewLength, waveformInput.value, 0.14, panForX(markerX));
+          setStatus('Preview: ' + formatFrequency(frequency) + (getStereoPanDepth() > 0 ? ' · ' + panPositionText(markerX) : ''));
         }).catch(function (error) {
           console.error(error);
           setStatus('Audio preview could not start. Click Points or Smooth and check the browser audio permissions.');
@@ -2219,7 +2402,7 @@
           lastDragPreviewTime = now;
           var previewY = draggingPoint.y;
           ensureAudioReady().then(function () {
-            scheduleTone(yToFrequency(previewY), audioContext.currentTime + 0.012, 0.075, waveformInput.value, 0.085);
+            scheduleTone(yToFrequency(previewY), audioContext.currentTime + 0.012, 0.075, waveformInput.value, 0.085, panForX(draggingPoint.x));
           }).catch(function () {});
         }
       }
@@ -2313,6 +2496,11 @@
       volumeInput.addEventListener('input', function () {
         updateOutputs();
         updateMasterVolume(false);
+      });
+      stereoPanInput.addEventListener('input', updateOutputs);
+      stereoPanInput.addEventListener('change', function () {
+        var panPercent = Math.round(numberValue(stereoPanInput));
+        setStatus(panPercent === 0 ? 'Stereo pan disabled — audio remains centred.' : panPercent + '% left-to-right stereo pan enabled. Points and previews use their x position; Smooth sweeps continuously.');
       });
       waveformInput.addEventListener('change', function () {
         setStatus('Waveform set to ' + waveformInput.options[waveformInput.selectedIndex].text.split(' — ')[0].toLowerCase() + '.');

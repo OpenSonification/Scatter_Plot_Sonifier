@@ -59,6 +59,7 @@ You can adjust:
 - playback speed and point-tone length;
 - point count, from 8 to 10,000;
 - playback volume;
+- an optional left-to-right stereo sweep tied to horizontal position;
 - sine, triangle, square, or sawtooth waveform; and
 - logarithmic (musical) or linear (numeric) pitch spacing.
 
